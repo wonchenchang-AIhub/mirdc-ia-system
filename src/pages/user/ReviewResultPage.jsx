@@ -19,7 +19,6 @@ export default function ReviewResultPage() {
       if (sub?.status === 'pending_manager' || sub?.status === 'approved') {
         setSubmitted(true)
       }
-      // 若已有AI覆核紀錄，直接顯示
       const { data: reviews } = await supabase.from('ai_review_records')
         .select('*').eq('submission_id', id).order('reviewed_at', { ascending: false }).limit(1)
       if (reviews && reviews.length > 0) {
@@ -86,7 +85,6 @@ export default function ReviewResultPage() {
       const clean = text.replace(/```json|```/g, '').trim()
       const parsed = JSON.parse(clean)
 
-      // 取得目前覆核輪次
       const { data: existingReviews } = await supabase.from('ai_review_records')
         .select('id').eq('submission_id', id)
       const round = (existingReviews?.length || 0) + 1
@@ -196,15 +194,29 @@ export default function ReviewResultPage() {
             <>
               <div className={`alert ${result.passed ? 'alert-success' : 'alert-error'}`}>
                 {result.passed
-                  ? '✅ 初步覆核通過！資料符合基本要求，可以送出給管理者進行人工覆核。'
+                  ? '✅ 初步覆核通過！資料符合基本要求，請點擊下方按鈕送出給管理者進行人工覆核。'
                   : `❌ 發現 ${result.issues?.filter(i => i.severity === 'error').length || 0} 項需修正的問題，請依下列說明修正後重新覆核。`
                 }
               </div>
 
-              {result.issues?.length > 0 && (
+              {result.issues?.length > 0 && !result.passed && (
                 <div style={{ marginTop: '16px' }}>
                   {result.issues.map((issue, i) => (
                     <div key={i} className={`review-issue ${issue.severity}`}>
+                      <div className="review-issue-title">{issue.message}</div>
+                      <div className="review-issue-suggestion">💡 {issue.suggestion}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {result.issues?.length > 0 && result.passed && result.issues.some(i => i.severity === 'warning') && (
+                <div style={{ marginTop: '16px' }}>
+                  <p style={{ fontSize: '14px', color: 'var(--color-text-secondary)', marginBottom: '8px' }}>
+                    以下為參考建議（不影響送出）：
+                  </p>
+                  {result.issues.filter(i => i.severity === 'warning').map((issue, i) => (
+                    <div key={i} className="review-issue warning">
                       <div className="review-issue-title">{issue.message}</div>
                       <div className="review-issue-suggestion">💡 {issue.suggestion}</div>
                     </div>
@@ -216,12 +228,11 @@ export default function ReviewResultPage() {
                 <button className="btn btn-secondary" onClick={runAIReview} disabled={reviewing}>
                   重新覆核
                 </button>
-                {result.passed && (
+                {result.passed ? (
                   <button className="btn btn-success btn-lg" onClick={handleFinalSubmit} disabled={submitting}>
                     {submitting ? '送出中...' : '確認送出，通知管理者覆核 →'}
                   </button>
-                )}
-                {!result.passed && (
+                ) : (
                   <button className="btn btn-primary" onClick={() => navigate(`/submission/${id}/table1`)}>
                     返回修正
                   </button>
