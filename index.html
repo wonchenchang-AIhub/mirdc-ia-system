@@ -1,10 +1,44 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-TW">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/mirdc-ia-system/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>mirdc-ia-system</title>
+    <meta name="description" content="金屬工業研究發展中心 內控自評作業系統" />
+
+    <!-- 防止 Clickjacking（舊版瀏覽器 framebusting） -->
+    <style>html { display: none; }</style>
+    <script>
+      if (self === top) {
+        document.documentElement.style.display = 'block';
+      } else {
+        top.location = self.location;
+      }
+    </script>
+
+    <!-- Content Security Policy -->
+    <meta http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src 'self' 'unsafe-inline' 'unsafe-eval';
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        font-src 'self' https://fonts.gstatic.com;
+        connect-src 'self'
+          https://*.supabase.co
+          https://generativelanguage.googleapis.com
+          https://api.anthropic.com;
+        img-src 'self' data: blob: https://*.supabase.co;
+        frame-ancestors 'none';
+      "
+    />
+
+    <!-- 防止 MIME Sniffing -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+
+    <!-- 防止 Referrer 洩漏 -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+
+    <title>內控自評作業系統｜金屬工業研究發展中心</title>
   </head>
   <body>
     <div id="root"></div>
