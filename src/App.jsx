@@ -4,6 +4,7 @@ import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import DashboardPage from './pages/user/DashboardPage'
 import NewSubmissionPage from './pages/user/NewSubmissionPage'
+import CopyEditPage from './pages/user/CopyEditPage'
 import Table1Page from './pages/user/Table1Page'
 import Table2ScopePage from './pages/user/Table2ScopePage'
 import Table2Page from './pages/user/Table2Page'
@@ -23,47 +24,26 @@ function ProtectedRoute({ children, requiredRole }) {
 }
 
 function AppRoutes() {
-  const { user, profile, loading } = useAuth()
+  const { user, loading } = useAuth()
   if (loading) return <div className="loading-screen">載入中...</div>
 
   return (
     <Routes>
-      {/* 公開頁面 */}
       <Route path="/login" element={!user ? <LoginPage /> : <Navigate to="/dashboard" />} />
       <Route path="/register" element={!user ? <RegisterPage /> : <Navigate to="/dashboard" />} />
 
-      {/* 填表者頁面 */}
-      <Route path="/dashboard" element={
-        <ProtectedRoute><DashboardPage /></ProtectedRoute>
-      } />
-      <Route path="/submission/new" element={
-        <ProtectedRoute><NewSubmissionPage /></ProtectedRoute>
-      } />
-      <Route path="/submission/:id/table1" element={
-        <ProtectedRoute><Table1Page /></ProtectedRoute>
-      } />
-      <Route path="/submission/:id/table2-scope" element={
-        <ProtectedRoute><Table2ScopePage /></ProtectedRoute>
-      } />
-      <Route path="/submission/:id/table2" element={
-        <ProtectedRoute><Table2Page /></ProtectedRoute>
-      } />
-      <Route path="/submission/:id/table3" element={
-        <ProtectedRoute><Table3Page /></ProtectedRoute>
-      } />
-      <Route path="/submission/:id/review-result" element={
-        <ProtectedRoute><ReviewResultPage /></ProtectedRoute>
-      } />
+      <Route path="/dashboard" element={<ProtectedRoute><DashboardPage /></ProtectedRoute>} />
+      <Route path="/submission/new" element={<ProtectedRoute><NewSubmissionPage /></ProtectedRoute>} />
+      <Route path="/submission/:id/copy-edit" element={<ProtectedRoute><CopyEditPage /></ProtectedRoute>} />
+      <Route path="/submission/:id/table1" element={<ProtectedRoute><Table1Page /></ProtectedRoute>} />
+      <Route path="/submission/:id/table2-scope" element={<ProtectedRoute><Table2ScopePage /></ProtectedRoute>} />
+      <Route path="/submission/:id/table2" element={<ProtectedRoute><Table2Page /></ProtectedRoute>} />
+      <Route path="/submission/:id/table3" element={<ProtectedRoute><Table3Page /></ProtectedRoute>} />
+      <Route path="/submission/:id/review-result" element={<ProtectedRoute><ReviewResultPage /></ProtectedRoute>} />
 
-      {/* 管理者頁面 */}
-      <Route path="/manager" element={
-        <ProtectedRoute requiredRole="manager"><ManagerDashboardPage /></ProtectedRoute>
-      } />
-      <Route path="/manager/review/:id" element={
-        <ProtectedRoute requiredRole="manager"><ManagerReviewPage /></ProtectedRoute>
-      } />
+      <Route path="/manager" element={<ProtectedRoute requiredRole="manager"><ManagerDashboardPage /></ProtectedRoute>} />
+      <Route path="/manager/review/:id" element={<ProtectedRoute requiredRole="manager"><ManagerReviewPage /></ProtectedRoute>} />
 
-      {/* 預設導向 */}
       <Route path="/" element={<Navigate to={user ? "/dashboard" : "/login"} />} />
       <Route path="*" element={<Navigate to="/" />} />
     </Routes>

@@ -12,10 +12,12 @@ export default function NewSubmissionPage() {
     evaluated_task: '',
     period_start: '',
     period_end: '',
-    evaluation_date: '',
   })
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  // 自動帶入今日日期
+  const today = new Date().toISOString().split('T')[0]
 
   function handleChange(e) {
     setForm(f => ({ ...f, [e.target.name]: e.target.value }))
@@ -25,19 +27,8 @@ export default function NewSubmissionPage() {
     e.preventDefault()
     setError('')
 
-    // 基本驗證
     if (new Date(form.period_start) >= new Date(form.period_end)) {
       setError('評估期間起日必須早於迄日')
-      return
-    }
-
-    const today = new Date()
-    const evalDate = new Date(form.evaluation_date)
-    const oneMonthAgo = new Date(today)
-    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
-
-    if (evalDate < oneMonthAgo || evalDate > today) {
-      setError('評估日期應為當年度最近1個月內')
       return
     }
 
@@ -46,7 +37,11 @@ export default function NewSubmissionPage() {
       .from('submissions')
       .insert({
         user_id: user.id,
-        ...form,
+        evaluation_unit: form.evaluation_unit,
+        evaluated_task: form.evaluated_task,
+        period_start: form.period_start,
+        period_end: form.period_end,
+        evaluation_date: today,
         status: 'draft',
       })
       .select()
@@ -68,27 +63,16 @@ export default function NewSubmissionPage() {
         <p>請填寫本次自評的基本資訊</p>
       </div>
 
-      {/* 步驟指示器 */}
       <div className="step-indicator">
         <div className="step-item active">
-          <span className="step-number">1</span>
-          基本資訊
+          <span className="step-number">1</span>基本資訊
         </div>
         <div className="step-divider" />
-        <div className="step-item">
-          <span className="step-number">2</span>
-          附表一：風險評估
-        </div>
+        <div className="step-item"><span className="step-number">2</span>附表一：風險評估</div>
         <div className="step-divider" />
-        <div className="step-item">
-          <span className="step-number">3</span>
-          附表二：內控自評
-        </div>
+        <div className="step-item"><span className="step-number">3</span>附表二：內控自評</div>
         <div className="step-divider" />
-        <div className="step-item">
-          <span className="step-number">4</span>
-          送出覆核
-        </div>
+        <div className="step-item"><span className="step-number">4</span>送出覆核</div>
       </div>
 
       <div className="card" style={{ maxWidth: '640px' }}>
@@ -130,14 +114,24 @@ export default function NewSubmissionPage() {
             </div>
 
             <div className="form-group">
-              <label>評估日期<span className="required">*</span></label>
-              <input name="evaluation_date" type="date" className="form-control"
-                value={form.evaluation_date} onChange={handleChange} required />
-              <p className="form-hint">應為當年度最近1個月內</p>
+              <label>評估日期</label>
+              <div style={{
+                padding: '9px 12px',
+                background: '#f0f4fa',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '14px',
+                color: 'var(--color-text-primary)'
+              }}>
+                {today}（系統自動帶入今日日期）
+              </div>
             </div>
 
             <div className="action-bar">
-              <span />
+              <button type="button" className="btn btn-secondary btn-lg"
+                onClick={() => navigate('/dashboard')}>
+                ← 返回案件列表
+              </button>
               <button type="submit" className="btn btn-primary btn-lg" disabled={loading}>
                 {loading ? '建立中...' : '下一步：填寫附表一 →'}
               </button>
