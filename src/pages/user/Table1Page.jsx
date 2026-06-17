@@ -1,18 +1,8 @@
-// Table1Page.jsx - 附表一：風險評估（完整版將在下一階段開發）
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { useAuth } from '../../hooks/useAuth'
 import Layout from '../../components/Layout'
-
-const RISK_LABELS = {
-  score_a_external: '外稽缺失',
-  score_a_internal: '內稽缺失',
-  score_b: '管理風險',
-  score_c: '組織風險',
-  score_d: '環境風險',
-  score_e: '財務風險',
-  score_f: '隱藏風險',
-}
 
 const EMPTY_ROW = {
   control_point: '',
@@ -25,6 +15,8 @@ const EMPTY_ROW = {
   score_e: '',
   score_f: '',
   notes: '',
+  score_f_suggestion: null, // { score, reason, matched_point, year }
+  score_f_dismissed: false,
 }
 
 function calcTotal(row) {
@@ -37,27 +29,139 @@ function calcTotal(row) {
   return a + b + c + d + e + f
 }
 
+// 計算兩個字串的相似度（簡單關鍵字重疊）
+function similarity(a, b) {
+  if (!a || !b) return 0
+  const wordsA = a.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 1)
+  const wordsB = b.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, ' ').split(/\s+/).filter(w => w.length > 1)
+  if (wordsA.length === 0 || wordsB.length === 0) return 0
+  const setA = new Set(wordsA)
+  const matches = wordsB.filter(w => setA.has(w)).length
+  return matches / Math.max(wordsA.length, wordsB.length)
+}
+
 export default function Table1Page() {
   const { id } = useParams()
+  const { user } = useAuth()
   const navigate = useNavigate()
   const [submission, setSubmission] = useState(null)
   const [rows, setRows] = useState([{ ...EMPTY_ROW, is_compliance_review: true }])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [historicalData, setHistoricalData] = useState([]) // 過去3年的查核紀錄
 
   useEffect(() => {
     async function load() {
       const { data: sub } = await supabase.from('submissions').select('*').eq('id', id).single()
       setSubmission(sub)
+
       const { data: t1 } = await supabase.from('table1_risk_assessment')
         .select('*').eq('submission_id', id).order('sort_order')
-      if (t1 && t1.length > 0) setRows(t1)
+      if (t1 && t1.length > 0) setRows(t1.map(r => ({ ...r, score_f_suggestion: null, score_f_dismissed: false })))
+
+      // 取得此用戶過去3年的附表二查核紀錄
+      const threeYearsAgo = new Date()
+      threeYearsAgo.setFullYear(threeYearsAgo.getFullYear() - 3)
+
+      const { data: pastSubs } = await supabase
+        .from('submissions')
+        .select('id, evaluation_date')
+        .eq('user_id', user.id)
+        .neq('id', id)
+        .gte('evaluation_date', threeYearsAgo.toISOString().split('T')[0])
+        .in('status', ['approved', 'archived', 'pending_manager', 'manager_reviewing'])
+        .order('evaluation_date', { ascending: false })
+
+      if (pastSubs && pastSubs.length > 0) {
+        const subIds = pastSubs.map(s => s.id)
+        const { data: pastT2 } = await supabase
+          .from('table2_self_assessment')
+          .select('id, submission_id, control_point')
+          .in('submission_id', subIds)
+          .neq('result', 'not_applicable')
+
+        if (pastT2) {
+          const enriched = pastT2.map(t2 => ({
+            ...t2,
+            evaluation_date: pastSubs.find(s => s.id === t2.submission_id)?.evaluation_date
+          }))
+          setHistoricalData(enriched)
+        }
+      }
     }
     load()
-  }, [id])
+  }, [id, user])
+
+  // 當控制重點名稱變更時，偵測歷史紀錄並給出建議
+  const detectHistoricalMatch = useCallback((controlPoint, rowIndex) => {
+    if (!controlPoint || controlPoint.length < 3 || historicalData.length === 0) return null
+
+    const today = new Date()
+    const oneYearAgo = new Date(); oneYearAgo.setFullYear(today.getFullYear() - 1)
+    const twoYearsAgo = new Date(); twoYearsAgo.setFullYear(today.getFullYear() - 2)
+
+    let bestMatch = null
+    let bestScore = 0
+
+    for (const record of historicalData) {
+      const sim = similarity(controlPoint, record.control_point)
+      if (sim > 0.4 && sim > bestScore) {
+        bestScore = sim
+        bestMatch = record
+      }
+    }
+
+    if (!bestMatch) return null
+
+    const evalDate = new Date(bestMatch.evaluation_date)
+    let score, reason
+
+    if (evalDate >= oneYearAgo) {
+      score = 1
+      reason = `去年（${bestMatch.evaluation_date}）已查核`
+    } else if (evalDate >= twoYearsAgo) {
+      score = 5
+      reason = `2年內（${bestMatch.evaluation_date}）已查核`
+    } else {
+      score = 9
+      reason = `3年以上未查（最近一次：${bestMatch.evaluation_date}）`
+    }
+
+    return {
+      score,
+      reason,
+      matched_point: bestMatch.control_point,
+      similarity: Math.round(bestScore * 100),
+    }
+  }, [historicalData])
 
   function updateRow(index, field, value) {
-    setRows(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r))
+    setRows(prev => prev.map((r, i) => {
+      if (i !== index) return r
+      const updated = { ...r, [field]: value }
+
+      // 當控制重點名稱改變時，觸發歷史比對
+      if (field === 'control_point') {
+        const suggestion = detectHistoricalMatch(value, index)
+        updated.score_f_suggestion = suggestion
+        updated.score_f_dismissed = false
+      }
+      return updated
+    }))
+  }
+
+  function applySuggestion(index) {
+    setRows(prev => prev.map((r, i) => {
+      if (i !== index || !r.score_f_suggestion) return r
+      return { ...r, score_f: String(r.score_f_suggestion.score), score_f_dismissed: true }
+    }))
+  }
+
+  function dismissSuggestion(index) {
+    setRows(prev => prev.map((r, i) => {
+      if (i !== index) return r
+      return { ...r, score_f_dismissed: true }
+    }))
   }
 
   function addRow() {
@@ -73,12 +177,10 @@ export default function Table1Page() {
     setError('')
     setSaving(true)
 
-    // 計算前1/3門檻
     const sorted = [...rows].sort((a, b) => calcTotal(b) - calcTotal(a))
     const threshold = Math.ceil(sorted.length / 3)
-    const topThirdIds = new Set(sorted.slice(0, threshold).map((_, i) => i))
+    const topThirdScores = new Set(sorted.slice(0, threshold).map(r => calcTotal(r)))
 
-    // 刪除舊資料並重新寫入
     await supabase.from('table1_risk_assessment').delete().eq('submission_id', id)
 
     const toInsert = rows.map((row, i) => ({
@@ -94,7 +196,13 @@ export default function Table1Page() {
       score_e: Number(row.score_e) || null,
       score_f: Number(row.score_f) || null,
       notes: row.notes || '',
-      included_in_table2: topThirdIds.has(i),
+      included_in_table2: (() => {
+        const total = calcTotal(row)
+        const sortedWithIdx = [...rows].map((r, idx) => ({ total: calcTotal(r), idx }))
+          .sort((a, b) => b.total - a.total)
+        const threshold2 = Math.ceil(rows.length / 3)
+        return sortedWithIdx.slice(0, threshold2).some(s => s.idx === i)
+      })(),
     }))
 
     const { error: dbErr } = await supabase.from('table1_risk_assessment').insert(toInsert)
@@ -128,114 +236,151 @@ export default function Table1Page() {
       <div className="alert alert-info" style={{ marginBottom: '20px' }}>
         <strong>填寫說明：</strong>各風險因素評分範圍 1-9 分（隱藏風險僅可填 1、5、9）。
         系統將自動計算綜合評分，並標示前 1/3 高風險控制重點。
+        {historicalData.length > 0 && (
+          <span style={{ color: 'var(--color-success)', marginLeft: '8px' }}>
+            ✓ 已載入 {historicalData.length} 筆歷史查核紀錄，可自動建議隱藏風險分數。
+          </span>
+        )}
       </div>
 
-      <div className="card" style={{ marginBottom: '16px' }}>
-        <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>控制重點清單</span>
-          <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>共 {rows.length} 項</span>
-        </div>
-        <div className="card-body" style={{ padding: '0' }}>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="data-table" style={{ minWidth: '1100px' }}>
-              <thead>
-                <tr>
-                  <th style={{ width: '32px' }}>#</th>
-                  <th style={{ minWidth: '200px' }}>控制重點</th>
-                  <th>外稽(A)</th>
-                  <th>內稽(A)</th>
-                  <th>管理(B)</th>
-                  <th>組織(C)</th>
-                  <th>環境(D)</th>
-                  <th>財務(E)</th>
-                  <th>隱藏(F)</th>
-                  <th style={{ width: '70px' }}>綜合評分</th>
-                  <th style={{ minWidth: '180px' }}>注意事項／風險說明</th>
-                  <th>前1/3</th>
-                  <th style={{ width: '48px' }}>刪除</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row, i) => {
-                  const total = calcTotal(row)
-                  return (
-                    <tr key={i}>
-                      <td style={{ textAlign: 'center', color: 'var(--color-text-muted)' }}>{i + 1}</td>
-                      <td>
-                        <input className="form-control" style={{ minWidth: '180px' }}
-                          value={row.control_point}
-                          onChange={e => updateRow(i, 'control_point', e.target.value)}
-                          placeholder="填寫控制重點名稱" />
-                        {i === 0 && (
-                          <p className="form-hint">第一列請填「規章適法性之檢視」</p>
-                        )}
-                      </td>
-                      {['score_a_external','score_a_internal','score_b','score_c','score_d','score_e'].map(field => (
-                        <td key={field}>
-                          <input className="form-control" type="number" min="1" max="9"
-                            style={{ width: '58px', textAlign: 'center' }}
-                            value={row[field]}
-                            onChange={e => updateRow(i, field, e.target.value)} />
-                        </td>
-                      ))}
-                      <td>
-                        <select className="form-control" style={{ width: '64px' }}
-                          value={row.score_f}
-                          onChange={e => updateRow(i, 'score_f', e.target.value)}>
-                          <option value="">-</option>
-                          <option value="1">1</option>
-                          <option value="5">5</option>
-                          <option value="9">9</option>
-                        </select>
-                      </td>
-                      <td>
-                        <div className="score-total" style={{ fontSize: '18px' }}>
-                          {total || '-'}
-                        </div>
-                      </td>
-                      <td>
-                        <textarea className="form-control" rows="2"
-                          style={{ minWidth: '160px', fontSize: '13px' }}
-                          value={row.notes}
-                          onChange={e => updateRow(i, 'notes', e.target.value)}
-                          placeholder="填寫注意事項或相關風險說明" />
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        {(() => {
-                          const sorted = [...rows].map((r, idx) => ({ total: calcTotal(r), idx }))
-                            .sort((a, b) => b.total - a.total)
-                          const threshold = Math.ceil(rows.length / 3)
-                          const isTop = sorted.slice(0, threshold).some(s => s.idx === i)
-                          return isTop
-                            ? <span style={{ color: 'var(--color-danger)', fontWeight: 700 }}>★</span>
-                            : <span style={{ color: 'var(--color-text-muted)' }}>-</span>
-                        })()}
-                      </td>
-                      <td style={{ textAlign: 'center' }}>
-                        <button className="btn btn-sm btn-danger"
-                          onClick={() => removeRow(i)}
-                          disabled={rows.length === 1}>✕</button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+      {rows.map((row, i) => {
+        const total = calcTotal(row)
+        const showSuggestion = row.score_f_suggestion && !row.score_f_dismissed && row.control_point?.length > 2
+
+        // 計算是否為前1/3
+        const sortedWithIdx = [...rows].map((r, idx) => ({ total: calcTotal(r), idx }))
+          .sort((a, b) => b.total - a.total)
+        const threshold = Math.ceil(rows.length / 3)
+        const isTop = sortedWithIdx.slice(0, threshold).some(s => s.idx === i)
+
+        return (
+          <div className="card" key={i} style={{ marginBottom: '16px' }}>
+            <div className="card-header" style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              background: isTop ? '#fff8f0' : '#f8fafc'
+            }}>
+              <span>
+                控制重點 {i + 1}
+                {isTop && <span style={{ marginLeft: '8px', color: 'var(--color-danger)', fontSize: '13px' }}>★ 前1/3高風險</span>}
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                  綜合評分：<strong style={{ fontSize: '16px', color: total > 0 ? 'var(--color-primary)' : 'inherit' }}>{total || '-'}</strong>
+                </span>
+                {rows.length > 1 && (
+                  <button className="btn btn-sm btn-danger" onClick={() => removeRow(i)}>✕ 刪除</button>
+                )}
+              </div>
+            </div>
+            <div className="card-body">
+              {/* 控制重點名稱 */}
+              <div className="form-group">
+                <label>控制重點名稱<span className="required">*</span></label>
+                <input className="form-control"
+                  value={row.control_point}
+                  onChange={e => updateRow(i, 'control_point', e.target.value)}
+                  placeholder={i === 0 ? '第一列請填「規章適法性之檢視」' : '填寫控制重點名稱'} />
+                {i === 0 && (
+                  <p className="form-hint">第一列固定為「規章適法性之檢視」</p>
+                )}
+              </div>
+
+              {/* 風險分數 */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '12px', marginBottom: '16px' }}>
+                {[
+                  { field: 'score_a_external', label: '外稽缺失(A)', hint: '1-9' },
+                  { field: 'score_a_internal', label: '內稽缺失(A)', hint: '1-9' },
+                  { field: 'score_b', label: '管理風險(B)', hint: '1-9' },
+                  { field: 'score_c', label: '組織風險(C)', hint: '1-9' },
+                  { field: 'score_d', label: '環境風險(D)', hint: '1-9' },
+                  { field: 'score_e', label: '財務風險(E)', hint: '1-9' },
+                ].map(({ field, label }) => (
+                  <div key={field}>
+                    <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>
+                      {label}
+                    </label>
+                    <input className="form-control" type="number" min="1" max="9"
+                      style={{ textAlign: 'center', padding: '6px 4px' }}
+                      value={row[field]}
+                      onChange={e => updateRow(i, field, e.target.value)} />
+                  </div>
+                ))}
+
+                {/* 隱藏風險 */}
+                <div>
+                  <label style={{ fontSize: '11px', fontWeight: 600, color: 'var(--color-text-muted)', display: 'block', marginBottom: '4px' }}>
+                    隱藏風險(F)
+                  </label>
+                  <select className="form-control" style={{ padding: '6px 4px' }}
+                    value={row.score_f}
+                    onChange={e => updateRow(i, 'score_f', e.target.value)}>
+                    <option value="">-</option>
+                    <option value="1">1（去年已查）</option>
+                    <option value="5">5（2年未查）</option>
+                    <option value="9">9（3年未查）</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* 隱藏風險建議提示 */}
+              {showSuggestion && (
+                <div style={{
+                  background: '#e8f4fd', border: '1px solid #b8daff',
+                  borderRadius: '6px', padding: '12px 16px', marginBottom: '16px',
+                  fontSize: '13px'
+                }}>
+                  <div style={{ fontWeight: 600, marginBottom: '6px', color: 'var(--color-info)' }}>
+                    💡 系統偵測到可能相關的歷史查核紀錄
+                  </div>
+                  <div style={{ marginBottom: '4px' }}>
+                    相似控制重點：「{row.score_f_suggestion.matched_point}」
+                    （相似度 {row.score_f_suggestion.similarity}%）
+                  </div>
+                  <div style={{ marginBottom: '10px' }}>
+                    建議隱藏風險評分：<strong style={{ fontSize: '15px' }}>{row.score_f_suggestion.score} 分</strong>
+                    （{row.score_f_suggestion.reason}）
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button className="btn btn-sm btn-primary" onClick={() => applySuggestion(i)}>
+                      ✓ 採用建議分數（{row.score_f_suggestion.score}分）
+                    </button>
+                    <button className="btn btn-sm btn-secondary" onClick={() => dismissSuggestion(i)}>
+                      略過，自行填寫
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 注意事項 */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>注意事項／相關風險說明</label>
+                <textarea className="form-control" rows="2"
+                  value={row.notes}
+                  onChange={e => updateRow(i, 'notes', e.target.value)}
+                  placeholder="填寫注意事項或相關風險說明" />
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        )
+      })}
 
       <button className="btn btn-secondary" onClick={addRow} style={{ marginBottom: '24px' }}>
         ＋ 新增控制重點
       </button>
 
       <div className="action-bar">
-        <button className="btn btn-secondary btn-lg" onClick={() => handleSave(false)} disabled={saving}>
-          {saving ? '儲存中...' : '儲存草稿'}
+        <button className="btn btn-secondary btn-lg"
+          onClick={() => navigate(`/submission/${id}/table1`.replace('/table1', '').replace(`/${id}`, '/new'))}>
+          ← 返回基本資訊
         </button>
-        <button className="btn btn-primary btn-lg" onClick={() => handleSave(true)} disabled={saving}>
-          {saving ? '儲存中...' : '下一步：選擇附表二範圍 →'}
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button className="btn btn-secondary btn-lg" onClick={() => handleSave(false)} disabled={saving}>
+            {saving ? '儲存中...' : '儲存草稿'}
+          </button>
+          <button className="btn btn-primary btn-lg" onClick={() => handleSave(true)} disabled={saving}>
+            {saving ? '儲存中...' : '下一步：選擇附表二範圍 →'}
+          </button>
+        </div>
       </div>
     </Layout>
   )
