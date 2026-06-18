@@ -61,7 +61,7 @@ export default function LoginPage() {
     <div className="auth-page">
       <div className="auth-card">
         <h1>內控自評作業系統</h1>
-        <p className="subtitle">金屬工業研究發展中心｜稽核室</p>
+        <p className="subtitle">稽核室</p>
 
         {error && <div className="alert alert-error">{error}</div>}
 

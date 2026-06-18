@@ -40,7 +40,7 @@ export default function Layout({ children }) {
       <aside className="sidebar">
         <div className="sidebar-logo">
           <h1>內控自評<br />作業系統</h1>
-          <p>金屬工業研究發展中心</p>
+          
         </div>
 
         <nav className="sidebar-nav">
