@@ -4,11 +4,25 @@ import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import Layout from '../../components/Layout'
 
+const AUDIT_CYCLES = [
+  '主要業務管理',
+  '採購管理',
+  '會計作業管理',
+  '人事作業管理',
+  '資產管理(含智慧財產)',
+  '投資與融資管理',
+  '數位化及資訊安全管理',
+  '環境安全衛生管理',
+  '個人資料保護管理',
+  '其他',
+]
+
 export default function NewSubmissionPage() {
   const { user, profile } = useAuth()
   const navigate = useNavigate()
   const [form, setForm] = useState({
     evaluation_unit: profile?.department || '',
+    audit_cycle: '',
     evaluated_task: '',
     period_start: '',
     period_end: '',
@@ -16,7 +30,6 @@ export default function NewSubmissionPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // 自動帶入今日日期
   const today = new Date().toISOString().split('T')[0]
 
   function handleChange(e) {
@@ -27,6 +40,10 @@ export default function NewSubmissionPage() {
     e.preventDefault()
     setError('')
 
+    if (!form.audit_cycle) {
+      setError('請選擇稽核循環類別')
+      return
+    }
     if (new Date(form.period_start) >= new Date(form.period_end)) {
       setError('評估期間起日必須早於迄日')
       return
@@ -38,6 +55,7 @@ export default function NewSubmissionPage() {
       .insert({
         user_id: user.id,
         evaluation_unit: form.evaluation_unit,
+        audit_cycle: form.audit_cycle,
         evaluated_task: form.evaluated_task,
         period_start: form.period_start,
         period_end: form.period_end,
@@ -87,6 +105,17 @@ export default function NewSubmissionPage() {
                 value={form.evaluation_unit} onChange={handleChange} required
                 placeholder="例：經營管理處人力資源組" />
               <p className="form-hint">請填寫完整的處別及組別名稱</p>
+            </div>
+
+            <div className="form-group">
+              <label>稽核循環類別<span className="required">*</span></label>
+              <select name="audit_cycle" className="form-control"
+                value={form.audit_cycle} onChange={handleChange} required>
+                <option value="">請選擇稽核循環類別...</option>
+                {AUDIT_CYCLES.map(cycle => (
+                  <option key={cycle} value={cycle}>{cycle}</option>
+                ))}
+              </select>
             </div>
 
             <div className="form-group">

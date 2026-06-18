@@ -3,11 +3,28 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import Layout from '../../components/Layout'
 
+const AUDIT_CYCLES = [
+  '主要業務管理',
+  '採購管理',
+  '會計作業管理',
+  '人事作業管理',
+  '資產管理(含智慧財產)',
+  '投資與融資管理',
+  '數位化及資訊安全管理',
+  '環境安全衛生管理',
+  '個人資料保護管理',
+  '其他',
+]
+
 export default function CopyEditPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const [submission, setSubmission] = useState(null)
-  const [form, setForm] = useState({ period_start: '', period_end: '' })
+  const [form, setForm] = useState({
+    period_start: '',
+    period_end: '',
+    audit_cycle: '',
+  })
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -15,6 +32,7 @@ export default function CopyEditPage() {
     async function load() {
       const { data } = await supabase.from('submissions').select('*').eq('id', id).single()
       setSubmission(data)
+      if (data?.audit_cycle) setForm(f => ({ ...f, audit_cycle: data.audit_cycle }))
     }
     load()
   }, [id])
@@ -27,6 +45,10 @@ export default function CopyEditPage() {
     e.preventDefault()
     setError('')
 
+    if (!form.audit_cycle) {
+      setError('請選擇稽核循環類別')
+      return
+    }
     if (!form.period_start || !form.period_end) {
       setError('請填寫評估期間')
       return
@@ -40,6 +62,7 @@ export default function CopyEditPage() {
     await supabase.from('submissions').update({
       period_start: form.period_start,
       period_end: form.period_end,
+      audit_cycle: form.audit_cycle,
     }).eq('id', id)
 
     setSaving(false)
@@ -58,16 +81,27 @@ export default function CopyEditPage() {
       </div>
 
       <div className="card" style={{ maxWidth: '640px' }}>
-        <div className="card-header">請填寫本次評估期間</div>
+        <div className="card-header">請確認並填寫本次評估資訊</div>
         <div className="card-body">
           <div className="alert alert-info" style={{ marginBottom: '24px' }}>
             附表一的控制重點已從舊案件複製過來，您可以在下一步直接修改。
-            本頁請填寫本次的評估期間（評估日期已自動帶入今日：{today}）。
+            請確認稽核循環類別並填寫本次評估期間（評估日期已自動帶入今日：{today}）。
           </div>
 
           {error && <div className="alert alert-error">{error}</div>}
 
           <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label>稽核循環類別<span className="required">*</span></label>
+              <select name="audit_cycle" className="form-control"
+                value={form.audit_cycle} onChange={handleChange} required>
+                <option value="">請選擇稽核循環類別...</option>
+                {AUDIT_CYCLES.map(cycle => (
+                  <option key={cycle} value={cycle}>{cycle}</option>
+                ))}
+              </select>
+            </div>
+
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
               <div className="form-group">
                 <label>評估期間（起）<span className="required">*</span></label>

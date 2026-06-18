@@ -149,6 +149,7 @@ export default function DashboardPage() {
               <thead>
                 <tr>
                   <th>評估單位</th>
+                  <th>稽核循環類別</th>
                   <th>受評作業</th>
                   <th>評估期間</th>
                   <th>評估日期</th>
@@ -161,6 +162,7 @@ export default function DashboardPage() {
                 {submissions.map(sub => (
                   <tr key={sub.id}>
                     <td>{sub.evaluation_unit}</td>
+                    <td>{sub.audit_cycle || <span style={{ color: 'var(--color-text-muted)' }}>-</span>}</td>
                     <td>{sub.evaluated_task}</td>
                     <td style={{ whiteSpace: 'nowrap' }}>
                       {sub.period_start && sub.period_end
