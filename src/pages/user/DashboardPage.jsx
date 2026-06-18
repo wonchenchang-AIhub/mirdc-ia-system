@@ -9,9 +9,8 @@ export default function DashboardPage() {
   const navigate = useNavigate()
   const [submissions, setSubmissions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [deleteTarget, setDeleteTarget] = useState(null) // 待刪除的案件
+  const [deleteTarget, setDeleteTarget] = useState(null)
   const [deleting, setDeleting] = useState(false)
-  const [copying, setCopying] = useState(null) // 複製中的案件id
 
   async function loadSubmissions() {
     const { data } = await supabase
@@ -51,75 +50,9 @@ export default function DashboardPage() {
     loadSubmissions()
   }
 
-  async function handleCopy(sub) {
-    setCopying(sub.id)
-    const today = new Date().toISOString().split('T')[0]
-
-    // 建立新案件（評估期間和評估日期讓使用者重填）
-    const { data: newSub } = await supabase
-      .from('submissions')
-      .insert({
-        user_id: user.id,
-        evaluation_unit: sub.evaluation_unit,
-        evaluated_task: sub.evaluated_task,
-        period_start: '',
-        period_end: '',
-        evaluation_date: today,
-        table2_scope: sub.table2_scope,
-        status: 'draft',
-      })
-      .select()
-      .single()
-
-    if (!newSub) { setCopying(null); return }
-
-    // 複製附表一
-    const { data: t1 } = await supabase.from('table1_risk_assessment')
-      .select('*').eq('submission_id', sub.id).order('sort_order')
-
-    if (t1 && t1.length > 0) {
-      const newT1 = t1.map(r => ({
-        submission_id: newSub.id,
-        sort_order: r.sort_order,
-        control_point: r.control_point,
-        is_compliance_review: r.is_compliance_review,
-        score_a_external: r.score_a_external,
-        score_a_internal: r.score_a_internal,
-        score_b: r.score_b,
-        score_c: r.score_c,
-        score_d: r.score_d,
-        score_e: r.score_e,
-        score_f: r.score_f,
-        notes: r.notes,
-        included_in_table2: r.included_in_table2,
-      }))
-      const { data: insertedT1 } = await supabase.from('table1_risk_assessment').insert(newT1).select()
-
-      // 複製附表二
-      const { data: t2 } = await supabase.from('table2_self_assessment')
-        .select('*').eq('submission_id', sub.id).order('sort_order')
-
-      if (t2 && t2.length > 0 && insertedT1) {
-        const t1IdMap = {}
-        t1.forEach((r, i) => { t1IdMap[r.id] = insertedT1[i]?.id })
-
-        const newT2 = t2.map(r => ({
-          submission_id: newSub.id,
-          table1_id: t1IdMap[r.table1_id] || null,
-          sort_order: r.sort_order,
-          control_point: r.control_point,
-          risk_score: r.risk_score,
-          result: 'pending', // 重置為未填寫
-          improvement_measures: null,
-          population_count: r.population_count,
-        }))
-        await supabase.from('table2_self_assessment').insert(newT2)
-      }
-    }
-
-    setCopying(null)
-    // 跳到新案件的基本資訊頁，讓使用者填評估期間
-    navigate(`/submission/${newSub.id}/copy-edit`)
+  function handleCopy(sub) {
+    // 直接跳到複製流程頁，傳入來源案件 id
+    navigate(`/submission/${sub.id}/copy-edit`)
   }
 
   return (
@@ -188,9 +121,8 @@ export default function DashboardPage() {
                         <button
                           className="btn btn-sm btn-secondary"
                           onClick={() => handleCopy(sub)}
-                          disabled={copying === sub.id}
-                          title="複製此案件為新案件">
-                          {copying === sub.id ? '複製中...' : '📋 複製'}
+                          title="複製此案件為新年度案件">
+                          📋 複製
                         </button>
                         <button
                           className="btn btn-sm btn-danger"

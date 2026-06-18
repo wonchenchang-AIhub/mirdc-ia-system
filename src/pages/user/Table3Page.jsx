@@ -82,7 +82,7 @@ export default function Table3Page() {
     <Layout>
       <div className="page-header">
         <h2>附表三：缺失改善或興革建議辦理單</h2>
-        <p>{submission.evaluation_unit}｜{submission.evaluated_task}</p>
+        <p>{submission.evaluation_unit}｜{submission.evaluated_task}{submission.audit_cycle && <span style={{ marginLeft: '8px', padding: '2px 8px', background: '#e8f0fe', borderRadius: '12px', fontSize: '12px', color: 'var(--color-primary-light)' }}>{submission.audit_cycle}</span>}</p>
       </div>
 
       <div className="step-indicator">

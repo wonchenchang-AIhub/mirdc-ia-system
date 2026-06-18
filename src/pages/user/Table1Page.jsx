@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../hooks/useAuth'
 import Layout from '../../components/Layout'
@@ -44,6 +44,8 @@ export default function Table1Page() {
   const { id } = useParams()
   const { user } = useAuth()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isCopied = searchParams.get('copied') === '1'
   const [submission, setSubmission] = useState(null)
   const [rows, setRows] = useState([{ ...EMPTY_ROW, is_compliance_review: true }])
   const [saving, setSaving] = useState(false)
@@ -218,7 +220,7 @@ export default function Table1Page() {
     <Layout>
       <div className="page-header">
         <h2>附表一：內控自評之風險評估</h2>
-        <p>{submission.evaluation_unit}｜{submission.evaluated_task}</p>
+        <p>{submission.evaluation_unit}｜{submission.evaluated_task}{submission.audit_cycle && <span style={{ marginLeft: '8px', padding: '2px 8px', background: '#e8f0fe', borderRadius: '12px', fontSize: '12px', color: 'var(--color-primary-light)' }}>{submission.audit_cycle}</span>}</p>
       </div>
 
       <div className="step-indicator">
@@ -232,6 +234,16 @@ export default function Table1Page() {
       </div>
 
       {error && <div className="alert alert-error">{error}</div>}
+
+      {isCopied && (
+        <div className="alert" style={{
+          background: '#fff8e6', border: '1px solid #ffc107',
+          borderLeft: '4px solid #ffc107', marginBottom: '16px', fontSize: '14px'
+        }}>
+          <strong>⚠ 本表已從去年案件複製</strong>，請逐項確認各控制重點的風險分數是否需要更新。
+          隱藏風險(F)分數系統將自動依歷史查核紀錄建議，請特別留意。
+        </div>
+      )}
 
       <div className="alert alert-info" style={{ marginBottom: '20px' }}>
         <strong>填寫說明：</strong>各風險因素評分範圍 1-9 分（隱藏風險僅可填 1、5、9）。

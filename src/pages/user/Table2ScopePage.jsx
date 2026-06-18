@@ -38,7 +38,7 @@ export default function Table2ScopePage() {
     <Layout>
       <div className="page-header">
         <h2>選擇附表二填寫範圍</h2>
-        <p>{submission.evaluation_unit}｜{submission.evaluated_task}</p>
+        <p>{submission.evaluation_unit}｜{submission.evaluated_task}{submission.audit_cycle && <span style={{ marginLeft: '8px', padding: '2px 8px', background: '#e8f0fe', borderRadius: '12px', fontSize: '12px', color: 'var(--color-primary-light)' }}>{submission.audit_cycle}</span>}</p>
       </div>
 
       <div className="step-indicator">
